@@ -2,8 +2,6 @@
 
 namespace App\Controllers\Api;
 
-use App\Models\UmkmModel;
-use CodeIgniter\HTTP\ResponseInterface;
 use CodeIgniter\RESTful\ResourceController;
 
 class UmkmController extends ResourceController
@@ -11,24 +9,38 @@ class UmkmController extends ResourceController
     protected $modelName = 'App\Models\UmkmModel';
     protected $format    = 'json';
 
+    /**
+     * Safely extract request payload from JSON, POST form-data, or PUT raw input.
+     */
+    private function getRequestData(): array
+    {
+        $contentType = $this->request->getHeaderLine('Content-Type');
+
+        if (str_contains($contentType, 'application/json')) {
+            return $this->request->getJSON(true) ?? [];
+        }
+
+        if ($this->request->getMethod() === 'POST') {
+            return $this->request->getPost() ?? [];
+        }
+
+        return $this->request->getRawInput() ?? [];
+    }
+
     // 1. GET /umkm or /api/umkm (Read all)
     public function index()
     {
-        $umkmModel = new UmkmModel();
-        $umkm = $umkmModel->findAll();
-
         return $this->respond([
             'success' => true,
             'message' => 'Data UMKM berhasil diambil',
-            'data'    => $umkm,
+            'data'    => $this->model->findAll(),
         ], 200);
     }
 
     // 2. GET /umkm/{id} or /api/umkm/{id} (Read single)
     public function show($id = null)
     {
-        $umkmModel = new UmkmModel();
-        $umkm = $umkmModel->find($id);
+        $umkm = $this->model->find($id);
 
         if (!$umkm) {
             return $this->respond([
@@ -48,8 +60,7 @@ class UmkmController extends ResourceController
     // 3. POST /umkm or /api/umkm (Create)
     public function create()
     {
-        $validation = \Config\Services::validation();
-
+        $data  = $this->getRequestData();
         $rules = [
             'nama_umkm' => [
                 'rules'  => 'required',
@@ -68,19 +79,15 @@ class UmkmController extends ResourceController
             'kontak'    => 'permit_empty|string',
         ];
 
-        // Support both json payload and form-data/x-www-form-urlencoded
-        $data = $this->request->getJSON(true) ?? $this->request->getPost();
-
-        if (!$validation->setRules($rules)->run($data)) {
+        if (!$this->validateData($data, $rules)) {
             return $this->respond([
                 'success' => false,
                 'message' => 'Gagal menambahkan data UMKM',
-                'errors'  => $validation->getErrors(),
+                'errors'  => $this->validator->getErrors(),
             ], 400);
         }
 
-        $umkmModel = new UmkmModel();
-        $insertedId = $umkmModel->insert([
+        $insertedId = $this->model->insert([
             'nama_umkm' => $data['nama_umkm'] ?? '',
             'pemilik'   => $data['pemilik'] ?? '',
             'alamat'    => $data['alamat'] ?? '',
@@ -92,24 +99,21 @@ class UmkmController extends ResourceController
             return $this->respond([
                 'success' => false,
                 'message' => 'Gagal menambahkan data UMKM',
-                'errors'  => $umkmModel->errors(),
+                'errors'  => $this->model->errors(),
             ], 500);
         }
-
-        $newData = $umkmModel->find($insertedId);
 
         return $this->respondCreated([
             'success' => true,
             'message' => 'Data UMKM berhasil ditambahkan',
-            'data'    => $newData,
+            'data'    => $this->model->find($insertedId),
         ]);
     }
 
     // 4. PUT /umkm/{id} or /api/umkm/{id} (Update)
     public function update($id = null)
     {
-        $umkmModel = new UmkmModel();
-        $existing = $umkmModel->find($id);
+        $existing = $this->model->find($id);
 
         if (!$existing) {
             return $this->respond([
@@ -121,8 +125,7 @@ class UmkmController extends ResourceController
             ], 404);
         }
 
-        $validation = \Config\Services::validation();
-
+        $data  = $this->getRequestData();
         $rules = [
             'nama_umkm' => [
                 'rules'  => 'required',
@@ -141,14 +144,11 @@ class UmkmController extends ResourceController
             'kontak'    => 'permit_empty|string',
         ];
 
-        // getRawInput() for PUT x-www-form-urlencoded or getJSON() for JSON
-        $data = $this->request->getJSON(true) ?? $this->request->getRawInput();
-
-        if (!$validation->setRules($rules)->run($data)) {
+        if (!$this->validateData($data, $rules)) {
             return $this->respond([
                 'success' => false,
                 'message' => 'Gagal memperbarui data UMKM',
-                'errors'  => $validation->getErrors(),
+                'errors'  => $this->validator->getErrors(),
             ], 400);
         }
 
@@ -160,30 +160,25 @@ class UmkmController extends ResourceController
             'kontak'    => $data['kontak'] ?? $existing['kontak'],
         ];
 
-        $result = $umkmModel->update($id, $updateData);
-
-        if ($result === false) {
+        if ($this->model->update($id, $updateData) === false) {
             return $this->respond([
                 'success' => false,
                 'message' => 'Gagal memperbarui data UMKM',
-                'errors'  => $umkmModel->errors(),
+                'errors'  => $this->model->errors(),
             ], 500);
         }
-
-        $updatedData = $umkmModel->find($id);
 
         return $this->respond([
             'success' => true,
             'message' => 'Data UMKM berhasil diperbarui',
-            'data'    => $updatedData,
+            'data'    => $this->model->find($id),
         ], 200);
     }
 
     // 5. DELETE /umkm/{id} or /api/umkm/{id} (Delete)
     public function delete($id = null)
     {
-        $umkmModel = new UmkmModel();
-        $data = $umkmModel->find($id);
+        $data = $this->model->find($id);
 
         if (!$data) {
             return $this->respond([
@@ -195,7 +190,7 @@ class UmkmController extends ResourceController
             ], 404);
         }
 
-        $umkmModel->delete($id);
+        $this->model->delete($id);
 
         return $this->respond([
             'success' => true,

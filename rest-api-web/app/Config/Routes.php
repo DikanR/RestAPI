@@ -3,6 +3,11 @@
 use CodeIgniter\Router\RouteCollection;
 
 /** @var RouteCollection $routes */
+
+$routes->options('(:any)', static function () {
+    return response()->setStatusCode(204);
+});
+
 $routes->get('/', 'Home::index');
 
 // Routes under /api/umkm (as in the module)
